@@ -1,57 +1,171 @@
-# Multi-Vendor SMS Sending Platform
+# SMS Multi Provider
 
-[中文说明](./README_CN.md)
+多厂商短信发送 SDK，让开发者在 5 分钟内发送第一条短信。
 
----
+## 项目定位
 
-## Introduction
-This repository provides a **multi-vendor SMS sending platform**, designed to support seamless integration with different SMS service providers.  
-It currently includes core implementations for **retry mechanisms**, **load balancing**, and **disaster recovery**, though the codebase is **not yet runnable** since configuration and setup files are still incomplete.
+- **SDK 而非平台**：提供发送能力，不提供管理界面
+- **多厂商支持**：阿里云、天翼云，易于扩展更多厂商
+- **开箱即用**：Spring Boot Starter 自动配置
+- **生产就绪**：负载均衡、熔断降级、重试机制
 
-Initial designs for **persistence** and **message history tracking** have also been included, but are not yet functional.
+## 快速开始
 
----
+### 1. 添加依赖
 
-## Features
-1. **Abstraction Layer**  
-   Provides a unified interface for different SMS vendor APIs, ensuring consistency and ease of replacement or extension.
+```xml
+<dependency>
+    <groupId>org.moretea.sms</groupId>
+    <artifactId>sms-starter</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
 
-2. **Configuration Management**  
-   Each vendor may have unique API endpoints, authentication methods, and template formats.  
-   A centralized configuration system or file should manage parameters such as URLs, credentials, and template definitions.
+### 2. 配置短信密钥
 
-3. **Disaster Recovery**  
-   Since SMS delivery is time-sensitive, if one vendor’s service fails, the system should quickly switch to another available provider.
+```yaml
+sms:
+  providers:
+    aliyun:
+      enabled: true
+      access-key-id: your-access-key
+      access-key-secret: your-secret
+      sign-name: 阿里云短信测试
+      weight: 10
+```
 
-4. **Load Balancing**  
-   For large-scale applications, distribute requests across multiple vendors to maximize throughput and stability.
+### 3. 发送短信
 
-5. **(TODO) Monitoring & Alerts**  
-   Implement real-time monitoring to collect metrics such as success rates and delivery latency.  
-   If a vendor’s performance drops below a threshold, trigger alerts and automatically reroute messages.  
-   Logs or database tracking should support this feature.
+```java
+@Autowired
+private SmsFacade smsFacade;
 
-6. **Retry Mechanism**  
-   When message sending fails, retry up to N times with exponential backoff or adjustable intervals.
+// 最简单方式
+SmsResponse response = smsFacade.send("13800138000", "您的验证码是1234");
 
-7. **Data Persistence**  
-   Store all message details — including content, status, and metadata — in a database for later analysis and archiving.
+// 使用模板（推荐）
+SmsRequest request = SmsRequest.builder()
+    .phoneNumber("13800138000")
+    .templateCode("verification_code")
+    .templateParams(Map.of("code", "1234"))
+    .build();
+SmsResponse response = smsFacade.sendTemplate(request);
 
-8. **Delivery Status Tracking**  
-   Enable querying of message delivery states, crucial for cases that require confirmation of receipt.
+// 检查结果
+if (response.getSendStatus()) {
+    System.out.println("发送成功！ID: " + response.getUniqueId());
+}
+```
 
-9. **Circuit Breaker**  
-   If a vendor repeatedly fails beyond a threshold, temporarily remove it from the rotation to protect overall stability.
+## 项目结构
 
----
+```
+sms-multi-provider/
+├── sms-api              # API 接口定义（核心抽象）
+├── sms-service          # 服务商实现（阿里云、天翼云）
+├── sms-load-balance     # 负载均衡（随机、轮询、加权）
+├── sms-facade           # 门面层（对外 API）
+├── sms-queue            # 消息队列支持（Kafka、RabbitMQ）
+├── sms-starter          # Spring Boot Starter（自动配置）
+└── sms-example          # 使用示例
+```
 
-## Roadmap
-- [ ] Complete configuration system
-- [ ] Add database persistence layer
-- [ ] Implement monitoring dashboard
-- [ ] Provide unified API documentation
+## 核心特性
 
----
+### 多厂商支持
+- ✅ 阿里云短信
+- ✅ 天翼云短信
+- 🔄 易于扩展更多厂商
+
+### 负载均衡
+- 随机策略
+- 轮询策略
+- 加权策略（推荐）
+
+### 高可用
+- 熔断机制（失败阈值 + 恢复时间）
+- 快速重试（立即切换服务商）
+- 延迟重试（定时任务队列）
+
+### 简洁 API
+
+| 方法 | 说明 | 场景 |
+|------|------|------|
+| `send(phone, message)` | 直接发送 | 简单通知 |
+| `sendTemplate(request)` | 模板发送 | 验证码、订单通知 |
+| `sendAsync(batch)` | 异步批量 | 营销短信 |
+
+## 完整配置示例
+
+```yaml
+sms:
+  providers:
+    aliyun:
+      enabled: true
+      access-key-id: ${ALIYUN_ACCESS_KEY_ID}
+      access-key-secret: ${ALIYUN_ACCESS_KEY_SECRET}
+      domain: dysmsapi.aliyuncs.com
+      sign-name: 阿里云短信测试
+      weight: 10
+      
+    ctyun:
+      enabled: true
+      access-key: ${CTYUN_ACCESS_KEY}
+      secret-key: ${CTYUN_SECRET_KEY}
+      sign-name: 天翼云短信
+      weight: 5
+
+  load-balance:
+    enabled: true
+    strategy: weighted
+
+  retry:
+    enabled: true
+    immediate-limit: 3
+    max-retry-times: 10
+    fixed-delay: 5000
+```
+
+## 示例项目
+
+详见 `sms-example/` 目录，包含：
+- REST API 演示
+- 业务代码演示
+- 完整配置示例
+
+## 开发计划
+
+### MVP (当前)
+- ✅ 阿里云、天翼云实现
+- ✅ 负载均衡、重试机制
+- ✅ Spring Boot Starter
+- ✅ 使用示例
+
+### v0.2.0
+- 配置校验（@Validated）
+- 历史记录持久化
+- 监控指标（Micrometer）
+
+### v0.3.0
+- 腾讯云、华为云支持
+- 通用 HTTP 适配器
+- Maven Central 发布
+
+## 构建
+
+```bash
+# 安装到本地 Maven 仓库
+mvn clean install -DskipTests
+
+# 运行示例
+cd sms-example
+mvn spring-boot:run
+```
 
 ## License
-MIT License
+
+MIT
+
+## 作者
+
+greyson
